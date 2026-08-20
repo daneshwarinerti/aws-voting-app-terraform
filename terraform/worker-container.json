@@ -1,0 +1,25 @@
+[
+  {
+    "name": "worker",
+    "image": "552823821096.dkr.ecr.us-east-1.amazonaws.com/worker:latest",
+    "essential": true,
+    "environment": [
+      {
+        "name": "REDIS_HOST",
+        "value": "master.voting-redis.wrnche.use1.cache.amazonaws.com"
+      },
+      {
+        "name": "POSTGRES_HOST",
+        "value": "voting-postgres.cuvi2quq0ftz.us-east-1.rds.amazonaws.com"
+      }
+    ],
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "/ecs/worker",
+        "awslogs-region": "us-east-1",
+        "awslogs-stream-prefix": "worker"
+      }
+    }
+  }
+]

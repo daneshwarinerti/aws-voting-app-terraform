@@ -172,6 +172,14 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+    ingress {
+    description = "Result App"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     description = "Allow outbound traffic"
     from_port   = 0
@@ -466,6 +474,390 @@ resource "aws_iam_role_policy" "github_ecr" {
     ]
   })
 }
+
+resource "aws_cloudwatch_log_group" "voting" {
+  name              = "/ecs/voting-app"
+  retention_in_days = 7
+
+  tags = {
+    Name = "voting-app-logs"
+  }
+}
+
+resource "aws_ecs_task_definition" "voting" {
+  family                   = "voting-app"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+
+  cpu    = "256"
+  memory = "512"
+
+  execution_role_arn = aws_iam_role.ecs_execution.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "voting-app"
+      image     = "${aws_ecr_repository.voting_app.repository_url}:latest"
+      essential = true
+
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name  = "REDIS_HOST"
+          value = aws_elasticache_replication_group.redis.primary_endpoint_address
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+
+        options = {
+          "awslogs-group"         = "/ecs/voting-app"
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "voting"
+        }
+      }
+    }
+  ])
+
+  depends_on = [
+    aws_cloudwatch_log_group.voting
+  ]
+
+  tags = {
+    Name = "voting-app-task"
+  }
+}
+
+
+resource "aws_cloudwatch_log_group" "result" {
+  name              = "/ecs/result-app"
+  retention_in_days = 7
+
+  tags = {
+    Name = "result-app-logs"
+  }
+}
+
+resource "aws_ecs_task_definition" "result" {
+  family                   = "result-app"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+
+  cpu    = "256"
+  memory = "512"
+
+  execution_role_arn = aws_iam_role.ecs_execution.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "result-app"
+      image     = "${aws_ecr_repository.result_app.repository_url}:latest"
+      essential = true
+
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name  = "POSTGRES_HOST"
+          value = aws_db_instance.postgres.address
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+
+        options = {
+          "awslogs-group"         = "/ecs/result-app"
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "result"
+        }
+      }
+    }
+  ])
+
+  depends_on = [
+    aws_cloudwatch_log_group.result
+  ]
+
+  tags = {
+    Name = "result-app-task"
+  }
+}
+
+resource "aws_cloudwatch_log_group" "worker" {
+  name              = "/ecs/worker"
+  retention_in_days = 7
+
+  tags = {
+    Name = "worker-logs"
+  }
+}
+
+resource "aws_ecs_task_definition" "worker" {
+  family                   = "worker"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+
+  cpu    = "256"
+  memory = "512"
+
+  execution_role_arn = aws_iam_role.ecs_execution.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "worker"
+      image     = "${aws_ecr_repository.worker.repository_url}:latest"
+      essential = true
+
+      environment = [
+        {
+          name  = "REDIS_HOST"
+          value = aws_elasticache_replication_group.redis.primary_endpoint_address
+        },
+        {
+          name  = "POSTGRES_HOST"
+          value = aws_db_instance.postgres.address
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+
+        options = {
+          "awslogs-group"         = "/ecs/worker"
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "worker"
+        }
+      }
+    }
+  ])
+
+  depends_on = [
+    aws_cloudwatch_log_group.worker
+  ]
+
+  tags = {
+    Name = "worker-task"
+  }
+}
+
+resource "aws_ecs_service" "voting" {
+  name            = "voting-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.voting.arn
+
+  desired_count = 2
+  launch_type   = "FARGATE"
+
+  network_configuration {
+    subnets = [
+      aws_subnet.app_a.id,
+      aws_subnet.app_b.id
+    ]
+
+    security_groups = [
+      aws_security_group.app.id
+    ]
+
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.voting.arn
+    container_name   = "voting-app"
+    container_port   = 80
+  }
+
+  tags = {
+    Name = "voting-service"
+  }
+}
+
+resource "aws_ecs_service" "worker" {
+  name            = "worker-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.worker.arn
+
+  desired_count = 1
+  launch_type   = "FARGATE"
+
+  network_configuration {
+    subnets = [
+      aws_subnet.app_a.id,
+      aws_subnet.app_b.id
+    ]
+
+    security_groups = [
+      aws_security_group.app.id
+    ]
+
+    assign_public_ip = false
+  }
+
+  tags = {
+    Name = "worker-service"
+  }
+}
+
+resource "aws_ecs_service" "result" {
+  name            = "result-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.result.arn
+
+  desired_count = 1
+  launch_type   = "FARGATE"
+
+  network_configuration {
+    subnets = [
+      aws_subnet.app_a.id,
+      aws_subnet.app_b.id
+    ]
+
+    security_groups = [
+      aws_security_group.app.id
+    ]
+
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.result.arn
+    container_name   = "result-app"
+    container_port   = 80
+  }
+
+  tags = {
+    Name = "result-service"
+  }
+}
+
+resource "aws_lb" "main" {
+  name               = "voting-app-alb"
+  internal           = false
+  load_balancer_type = "application"
+
+  security_groups = [
+    aws_security_group.alb.id
+  ]
+
+  subnets = [
+    aws_subnet.public_a.id,
+    aws_subnet.public_b.id
+  ]
+
+  tags = {
+    Name = "voting-app-alb"
+  }
+}
+
+resource "aws_lb_target_group" "voting" {
+  name        = "voting-target-group"
+  port        = 80
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = aws_vpc.main.id
+
+  health_check {
+    enabled             = true
+    path                = "/"
+    protocol            = "HTTP"
+    port                = "traffic-port"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+  }
+
+  tags = {
+    Name = "voting-target-group"
+  }
+}
+
+resource "aws_lb_target_group" "result" {
+  name        = "result-target-group"
+  port        = 80
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = aws_vpc.main.id
+
+  health_check {
+    enabled             = true
+    path                = "/"
+    protocol            = "HTTP"
+    port                = "traffic-port"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+  }
+
+  tags = {
+    Name = "result-target-group"
+  }
+}
+
+resource "aws_lb_listener" "voting" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.voting.arn
+  }
+
+  tags = {
+    Name = "voting-http-listener"
+  }
+}
+
+resource "aws_lb_listener_rule" "result" {
+  listener_arn = aws_lb_listener.voting.arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.result.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/result*"]
+    }
+  }
+}
+
+resource "aws_lb_listener" "result" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 8080
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.result.arn
+  }
+
+  tags = {
+    Name = "result-http-listener"
+  }
+}
+
+
+
 
 
 
