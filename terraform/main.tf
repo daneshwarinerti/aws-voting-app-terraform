@@ -631,7 +631,7 @@ resource "aws_ecs_task_definition" "worker" {
   container_definitions = jsonencode([
     {
       name      = "worker"
-      image     = "${aws_ecr_repository.worker.repository_url}:fix1"
+      image     = "${aws_ecr_repository.worker.repository_url}:fix2"
       essential = true
 
       environment = [
