@@ -142,14 +142,14 @@ namespace Worker
 
                     break;
                 }
-                catch (SocketException)
-                {
-                    Console.Error.WriteLine("Waiting for db");
-                    Thread.Sleep(1000);
+                catch (SocketException ex)
+               {
+                   Console.Error.WriteLine($"Network error connecting to PostgreSQL: {ex.Message}");
+                   Thread.Sleep(1000);
                 }
-                catch (DbException)
+                catch (DbException ex)
                 {
-                    Console.Error.WriteLine("Waiting for db");
+                    Console.Error.WriteLine($"PostgreSQL connection error: {ex.Message}");
                     Thread.Sleep(1000);
                 }
             }
