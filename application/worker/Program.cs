@@ -16,23 +16,43 @@ namespace Worker
         {
             try
             {
-                // Read database and Redis hosts from ECS environment variables
+                // Read connection details from environment variables
                 var postgresHost = Environment.GetEnvironmentVariable("POSTGRES_HOST");
+                var postgresUser = Environment.GetEnvironmentVariable("POSTGRES_USER");
+                var postgresPassword = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD");
+
                 var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST");
 
                 Console.WriteLine($"POSTGRES_HOST: {postgresHost}");
+                Console.WriteLine($"POSTGRES_USER: {postgresUser}");
                 Console.WriteLine($"REDIS_HOST: {redisHost}");
+
+                if (string.IsNullOrEmpty(postgresHost) ||
+                    string.IsNullOrEmpty(postgresUser) ||
+                    string.IsNullOrEmpty(postgresPassword))
+                {
+                    Console.Error.WriteLine("PostgreSQL environment variables are missing.");
+                    return 1;
+                }
+
+                if (string.IsNullOrEmpty(redisHost))
+                {
+                    Console.Error.WriteLine("REDIS_HOST environment variable is missing.");
+                    return 1;
+                }
 
                 // Connect to PostgreSQL
                 var pgsql = OpenDbConnection(
-                    $"Server={postgresHost};Username=postgres;Password=postgres;"
+                    postgresHost,
+                    postgresUser,
+                    postgresPassword
                 );
 
                 // Connect to Redis
                 var redisConn = OpenRedisConnection(redisHost);
                 var redis = redisConn.GetDatabase();
 
-                // Keep-alive command for PostgreSQL
+                // PostgreSQL keep-alive command
                 var keepAliveCommand = pgsql.CreateCommand();
                 keepAliveCommand.CommandText = "SELECT 1";
 
@@ -40,7 +60,7 @@ namespace Worker
 
                 while (true)
                 {
-                    // Slow down to prevent CPU spike
+                    // Prevent excessive CPU usage
                     Thread.Sleep(100);
 
                     // Reconnect Redis if connection is lost
@@ -52,7 +72,7 @@ namespace Worker
                         redis = redisConn.GetDatabase();
                     }
 
-                    // Get vote from Redis
+                    // Get a vote from Redis
                     string json = redis.ListLeftPopAsync("votes").Result;
 
                     if (json != null)
@@ -67,17 +87,20 @@ namespace Worker
                         );
 
                         // Reconnect PostgreSQL if connection is lost
-                        if (!pgsql.State.Equals(System.Data.ConnectionState.Open))
+                        if (!pgsql.State.Equals(
+                            System.Data.ConnectionState.Open))
                         {
                             Console.WriteLine("Reconnecting DB");
 
                             pgsql = OpenDbConnection(
-                                $"Server={postgresHost};Username=postgres;Password=postgres;"
+                                postgresHost,
+                                postgresUser,
+                                postgresPassword
                             );
                         }
                         else
                         {
-                            // Process the vote
+                            // Store the vote in PostgreSQL
                             UpdateVote(
                                 pgsql,
                                 vote.voter_id,
@@ -100,16 +123,21 @@ namespace Worker
         }
 
         private static NpgsqlConnection OpenDbConnection(
-            string connectionString
-        )
+            string host,
+            string username,
+            string password)
         {
             NpgsqlConnection connection;
+
+            string connectionString =
+                $"Server={host};Username={username};Password={password};";
 
             while (true)
             {
                 try
                 {
                     connection = new NpgsqlConnection(connectionString);
+
                     connection.Open();
 
                     break;
@@ -140,12 +168,13 @@ namespace Worker
 
             command.ExecuteNonQuery();
 
+            command.Dispose();
+
             return connection;
         }
 
         private static ConnectionMultiplexer OpenRedisConnection(
-            string hostname
-        )
+            string hostname)
         {
             // Resolve Redis hostname to IPv4 address
             var ipAddress = GetIp(hostname);
@@ -174,7 +203,8 @@ namespace Worker
                 .Result
                 .AddressList
                 .First(
-                    a => a.AddressFamily == AddressFamily.InterNetwork
+                    a => a.AddressFamily ==
+                         AddressFamily.InterNetwork
                 )
                 .ToString();
         }
@@ -182,8 +212,7 @@ namespace Worker
         private static void UpdateVote(
             NpgsqlConnection connection,
             string voterId,
-            string vote
-        )
+            string vote)
         {
             var command = connection.CreateCommand();
 
@@ -202,7 +231,7 @@ namespace Worker
             }
             catch (DbException)
             {
-                // Voter already exists → update their vote
+                // Voter already exists, so update the vote
                 command.CommandText = @"
                     UPDATE votes
                     SET vote = @vote

@@ -172,7 +172,7 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-    ingress {
+  ingress {
     description = "Result App"
     from_port   = 8080
     to_port     = 8080
@@ -631,6 +631,15 @@ resource "aws_ecs_task_definition" "worker" {
         {
           name  = "POSTGRES_HOST"
           value = aws_db_instance.postgres.address
+        },
+
+        {
+          name  = "POSTGRES_USER"
+          value = var.db_username
+        },
+        {
+          name  = "POSTGRES_PASSWORD"
+          value = var.db_password
         }
       ]
 
