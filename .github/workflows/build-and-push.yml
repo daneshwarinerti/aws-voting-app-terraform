@@ -21,6 +21,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Verify application files
+        run: |
+          echo "======================================"
+          echo "Git commit:"
+          git rev-parse HEAD
+          echo "======================================"
+
+          echo "Worker Dockerfile:"
+          echo "======================================"
+          cat application/worker/Dockerfile
+          echo "======================================"
+
+          echo "Worker directory:"
+          echo "======================================"
+          ls -la application/worker
+          echo "======================================"
+
       - name: Debug OIDC claims
         uses: github/actions-oidc-debugger@main
 
@@ -52,7 +69,17 @@ jobs:
 
       - name: Build worker
         run: |
+          echo "======================================"
+          echo "Building worker"
+          echo "======================================"
+
+          echo "Dockerfile being used:"
+          cat ./application/worker/Dockerfile
+
+          echo "======================================"
+
           docker build \
+            --no-cache \
             -t $ECR_REGISTRY/worker:latest \
             ./application/worker
 
