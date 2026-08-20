@@ -1,0 +1,61 @@
+name: Build and Push Images
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 552823821096.dkr.ecr.us-east-1.amazonaws.com
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build voting app
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/voting-app:latest \
+            ./application/vote
+
+      - name: Build result app
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/result-app:latest \
+            ./application/result
+
+      - name: Build worker
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/worker:latest \
+            ./application/worker
+
+      - name: Push voting app
+        run: |
+          docker push $ECR_REGISTRY/voting-app:latest
+
+      - name: Push result app
+        run: |
+          docker push $ECR_REGISTRY/result-app:latest
+
+      - name: Push worker
+        run: |
+          docker push $ECR_REGISTRY/worker:latest
