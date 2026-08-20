@@ -38,6 +38,12 @@ jobs:
           ls -la application/worker
           echo "======================================"
 
+      - name: Show GitHub repository IDs
+        run: |
+          echo "Repository owner ID: ${{ github.repository_owner_id }}"
+          echo "Repository ID: ${{ github.repository_id }}"
+          echo "Repository: ${{ github.repository }}"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
