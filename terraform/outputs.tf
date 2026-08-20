@@ -40,7 +40,7 @@ resource "aws_db_instance" "postgres" {
 
   db_name  = "voting"
   username = var.db_username
-  password = var.db_password
+  manage_master_user_password = true
 
   port = 5432
 

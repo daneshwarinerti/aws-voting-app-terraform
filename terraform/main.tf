@@ -388,6 +388,24 @@ resource "aws_iam_role_policy_attachment" "ecs_execution" {
   role       = aws_iam_role.ecs_execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
+resource "aws_iam_role_policy" "ecs_secrets" {
+  name = "voting-ecs-secrets-policy"
+  role = aws_iam_role.ecs_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = "arn:aws:secretsmanager:us-east-1:552823821096:secret:rds!db-3335ef2d-fe1d-4bf8-a31a-3b429cad6fea-j08F6t"
+      }
+    ]
+  })
+}
 
 resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
@@ -578,13 +596,17 @@ resource "aws_ecs_task_definition" "result" {
           name  = "POSTGRES_USER"
           value = var.db_username
         },
-        {
-          name  = "POSTGRES_PASSWORD"
-          value = var.db_password
-        },
+    
         {
           name  = "POSTGRES_DATABASE"
           value = "voting"
+        }
+      ]
+
+       secrets = [
+        {
+          name      = "POSTGRES_PASSWORD"
+          valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:password::"
         }
       ]
 
@@ -643,10 +665,7 @@ resource "aws_ecs_task_definition" "worker" {
           name  = "POSTGRES_USER"
           value = var.db_username
         },
-        {
-          name  = "POSTGRES_PASSWORD"
-          value = var.db_password
-        },
+      
         {
           name  = "POSTGRES_DATABASE"
           value = "voting"
@@ -656,6 +675,13 @@ resource "aws_ecs_task_definition" "worker" {
           value = aws_elasticache_replication_group.redis.primary_endpoint_address
         }
       ]
+
+      secrets = [
+  {
+    name      = "POSTGRES_PASSWORD"
+    valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:password::"
+  }
+]
 
       logConfiguration = {
         logDriver = "awslogs"
