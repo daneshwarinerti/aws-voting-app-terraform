@@ -98,3 +98,24 @@ jobs:
       - name: Push worker
         run: |
           docker push $ECR_REGISTRY/worker:latest
+
+      - name: Deploy to ECS
+        run: |
+          echo "Updating ECS services..."
+
+          aws ecs update-service \
+            --cluster voting-app-cluster \
+            --service voting-service \
+            --force-new-deployment
+
+          aws ecs update-service \
+            --cluster voting-app-cluster \
+            --service worker-service \
+            --force-new-deployment
+
+          aws ecs update-service \
+            --cluster voting-app-cluster \
+            --service result-service \
+            --force-new-deployment
+
+          echo "ECS deployment started."
