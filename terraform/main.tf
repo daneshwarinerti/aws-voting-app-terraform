@@ -536,7 +536,6 @@ resource "aws_ecs_task_definition" "voting" {
   }
 }
 
-
 resource "aws_cloudwatch_log_group" "result" {
   name              = "/ecs/result-app"
   retention_in_days = 7
@@ -559,7 +558,7 @@ resource "aws_ecs_task_definition" "result" {
   container_definitions = jsonencode([
     {
       name      = "result-app"
-      image     = "${aws_ecr_repository.result_app.repository_url}:latest"
+      image     = "${aws_ecr_repository.result_app.repository_url}:fix1"
       essential = true
 
       portMappings = [
@@ -574,6 +573,18 @@ resource "aws_ecs_task_definition" "result" {
         {
           name  = "POSTGRES_HOST"
           value = aws_db_instance.postgres.address
+        },
+        {
+          name  = "POSTGRES_USER"
+          value = var.db_username
+        },
+        {
+          name  = "POSTGRES_PASSWORD"
+          value = var.db_password
+        },
+        {
+          name  = "POSTGRES_DATABASE"
+          value = "voting"
         }
       ]
 
@@ -620,19 +631,14 @@ resource "aws_ecs_task_definition" "worker" {
   container_definitions = jsonencode([
     {
       name      = "worker"
-      image     = "${aws_ecr_repository.worker.repository_url}:latest"
+      image     = "${aws_ecr_repository.worker.repository_url}:fix1"
       essential = true
 
       environment = [
         {
-          name  = "REDIS_HOST"
-          value = aws_elasticache_replication_group.redis.primary_endpoint_address
-        },
-        {
           name  = "POSTGRES_HOST"
           value = aws_db_instance.postgres.address
         },
-
         {
           name  = "POSTGRES_USER"
           value = var.db_username
@@ -640,6 +646,14 @@ resource "aws_ecs_task_definition" "worker" {
         {
           name  = "POSTGRES_PASSWORD"
           value = var.db_password
+        },
+        {
+          name  = "POSTGRES_DATABASE"
+          value = "voting"
+        },
+        {
+          name  = "REDIS_HOST"
+          value = aws_elasticache_replication_group.redis.primary_endpoint_address
         }
       ]
 
@@ -663,7 +677,6 @@ resource "aws_ecs_task_definition" "worker" {
     Name = "worker-task"
   }
 }
-
 resource "aws_ecs_service" "voting" {
   name            = "voting-service"
   cluster         = aws_ecs_cluster.main.id
@@ -864,10 +877,3 @@ resource "aws_lb_listener" "result" {
     Name = "result-http-listener"
   }
 }
-
-
-
-
-
-
-
