@@ -130,7 +130,7 @@ namespace Worker
             NpgsqlConnection connection;
 
             string connectionString =
-                $"Server={host};Username={username};Password={password};";
+                $"Server={host};Database=voting;Username={username};Password={password};Ssl Mode=Require;";
 
             while (true)
             {
